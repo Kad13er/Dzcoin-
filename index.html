@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Dzcoin</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://sad.adsgram.ai/js/sad.min.js"></script>
+<style>
+body{margin:0;font-family:system-ui,sans-serif;background:var(--tg-theme-bg-color,#12141c);color:var(--tg-theme-text-color,#fff);text-align:center;padding:16px;user-select:none}
+#pts{font-size:2.6rem;font-weight:700;margin:8px 0}
+#coin{width:200px;height:200px;border-radius:50%;border:0;font-size:5rem;background:radial-gradient(#ffd54a,#e0a100);box-shadow:0 8px 24px #0006;margin:16px auto;display:block;transition:transform .05s}
+#coin:active{transform:scale(.94)}
+.bar{height:10px;background:#ffffff22;border-radius:6px;overflow:hidden;margin:6px auto;max-width:320px}
+#fill{height:100%;background:#4ade80;width:100%}
+button.ad{margin-top:12px;padding:12px 18px;border:0;border-radius:10px;font-size:1rem;font-weight:600;background:var(--tg-theme-button-color,#4f46e5);color:var(--tg-theme-button-text-color,#fff)}
+#top{max-width:320px;margin:20px auto;text-align:left;font-size:.9rem}
+</style></head><body>
+<div>Points</div><div id="pts">0</div>
+<button id="coin">🪙</button>
+<div>⚡ <span id="en">0</span> / <span id="max">0</span></div>
+<div class="bar"><div id="fill"></div></div>
+<button class="ad" id="adBtn" style="display:none">▶ Regarder une pub (+énergie)</button>
+<div id="msg"></div>
+<div id="top"></div>
+<script>
+const ADSGRAM_BLOCK_ID = ""; // ← mets ici ton identifiant de bloc Adsgram (ex. "1234")
+const tg = Telegram.WebApp; tg.ready(); tg.expand();
+const H = {"X-Init-Data": tg.initData, "Content-Type": "application/json"};
+let s = {points:0, energy:0, max_energy:1, ads_left:0}, pending = 0, busy = false;
+
+function draw(){
+  pts.textContent = s.points + pending;
+  en.textContent = Math.max(0, s.energy - pending); max.textContent = s.max_energy;
+  fill.style.width = (100 * Math.max(0, s.energy - pending) / s.max_energy) + "%";
+}
+async function api(path, body){
+  const r = await fetch(path, {method:"POST", headers:H, body: body ? JSON.stringify(body) : "{}"});
+  if(!r.ok) throw new Error((await r.json().catch(()=>({}))).detail || "Erreur");
+  return r.json();
+}
+coin.onclick = () => {
+  if(s.energy - pending <= 0){ msg.textContent = "Plus d'énergie ! Attends ou regarde une pub."; return; }
+  pending++; tg.HapticFeedback && tg.HapticFeedback.impactOccurred("light"); draw();
+};
+setInterval(async () => {
+  if(busy || pending === 0) return;
+  busy = true; const n = pending;
+  try{ s = await api("/api/tap", {taps: Math.min(n, 25)}); pending = Math.max(0, pending - Math.min(n, 25)); }
+  catch(e){ msg.textContent = e.message; }
+  busy = false; draw();
+}, 1000);
+async function refresh(){
+  try{ s = await api("/api/state"); }catch(e){ msg.textContent = "Ouvre l'app depuis Telegram."; }
+  draw();
+  adBtn.style.display = (ADSGRAM_BLOCK_ID && s.ads_left > 0) ? "inline-block" : "none";
+  try{
+    const t = await (await fetch("/api/top")).json();
+    top_.innerHTML = "<b>🏆 Classement</b><br>" + t.map((x,i)=>(i+1)+". "+x.name.replace(/[<>&]/g,"")+" — "+x.points).join("<br>");
+  }catch(e){}
+}
+const top_ = document.getElementById("top");
+adBtn.onclick = async () => {
+  if(!window.Adsgram) return;
+  try{
+    const res = await window.Adsgram.init({blockId: ADSGRAM_BLOCK_ID}).show();
+    if(res && res.done){ s = await api("/api/ad"); msg.textContent = "+énergie !"; draw(); }
+  }catch(e){ msg.textContent = (e && e.message) || "Pub indisponible pour le moment."; }
+};
+refresh(); setInterval(refresh, 15000);
+</script></body></html>
